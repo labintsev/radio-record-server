@@ -104,15 +104,24 @@ python -m venv .venv
   в него на `radio-record:8080`;
 - хост в лейблах — `radio-record.mldl.ru`: замените на своё имя и заведите под него
   DNS-запись, иначе Let's Encrypt не выпустит сертификат;
-- архив пишется в `$HOME/radio-recordings` на хосте (внутри контейнера —
-  `/data/recordings`); каталог должен принадлежать UID `10001`:
-  `mkdir -p ~/radio-recordings && sudo chown 10001:10001 ~/radio-recordings`.
-  Файлы создаются с правами `0644`, поэтому их можно читать и выгружать
-  (`rsync`/`scp`) без Docker и без sudo.
+- архив пишется в `$HOME/recordings` на хосте (внутри контейнера —
+  `/data/recordings`). Контейнер запускается под вашим UID (`PUID`/`PGID` в
+  `.env`, по умолчанию `1000:1000`), поэтому файлы принадлежат вам и доступны
+  без sudo; каталог достаточно создать: `mkdir -p ~/recordings`.
+  Если `id -u`/`id -g` отличаются от `1000`, укажите свои значения в `.env`.
 
 ```bash
 export TRAEFIK_NETWORK=traefik_frontend
 docker compose up -d --build
+```
+
+UID/GID, под которым работает контейнер, задаётся в `.env` рядом с compose
+(по умолчанию `1000:1000`):
+
+```bash
+# .env
+PUID=1000
+PGID=1000
 ```
 
 Если запускать compose через `sudo`, `$HOME` будет `/root`, и архив окажется там:
@@ -249,7 +258,7 @@ recordings/
 с расширением `.part`, поэтому потребитель архива никогда не увидит недописанный
 WAV.
 
-В Docker корень архива смонтирован из `$HOME/radio-recordings` на хосте в
+В Docker корень архива смонтирован из `$HOME/recordings` на хосте в
 `/data/recordings` контейнера, так что файлы доступны напрямую — выгружать их
 можно обычным `rsync`/`scp` (при синхронизации исключайте `*.part`).
 

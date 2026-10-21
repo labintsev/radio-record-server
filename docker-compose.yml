@@ -4,6 +4,8 @@ services:
     image: radio-record:latest
     container_name: radio-record
     restart: unless-stopped
+    # Run as the host user so recorded files belong to you (see PUID/PGID in .env).
+    user: "${PUID:-1000}:${PGID:-1000}"
     command:
       - --port
       - "9100"
@@ -27,8 +29,8 @@ services:
       traefik.http.services.radio-record.loadbalancer.server.port: "8080"
       traefik.http.services.radio-record.loadbalancer.healthcheck.path: /healthz
     volumes:
-      # Host directory, visible without Docker (needs: chown 10001:10001 ~/radio-recordings).
-      - ${HOME}/radio-recordings:/data/recordings
+      # Your own directory: no chown needed, the container runs as PUID:PGID.
+      - ${HOME}/recordings:/data/recordings
     networks:
       - frontend
     healthcheck:
