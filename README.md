@@ -89,6 +89,103 @@ python -m venv .venv
 логгер `asyncio` не засоряет его обрывами соединений — на Windows закрытие
 вкладки/сокета иначе даёт `ConnectionResetError` в транспорте.
 
+## За Traefik
+
+У сервера два порта, и это два разных типа роутинга: HTTP (дашборд) и сырой TCP
+(аудио). Аудио через HTTP не идёт, поэтому его нельзя повесить на HTTP-роутер.
+
+Коротко:
+
+- **Дашборд** работает через Traefik без изменений кода. Обязательное условие —
+  слушать не loopback: `--dashboard-host 0.0.0.0` (или адрес docker-сети).
+- **Аудио** проходит через TCP-роутер без изменений: протокол бинарный,
+  прокси его не разбирает и не буферизует.
+- **Не работает «из коробки»**: реальный IP устройства (у TCP нет
+  `X-Forwarded-For`, а PROXY protocol Traefik бэкенду не отправляет) и TLS на
+  аудиопорту.
+
+### Статическая конфигурация Traefik
+
+```yaml
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+  ingest:
+    address: ":9100"          # отдельный порт только под аудио
+```
+
+### docker-compose
+
+Образ собирается из [Dockerfile](Dockerfile); в контейнере дашборд по умолчанию
+слушает `0.0.0.0` (иначе Traefik до него не достучится), архив — в `/data/recordings`.
+
+```powershell
+docker build -t radio-record .
+```
+
+```yaml
+services:
+  radio-record:
+    build: .
+    command: >
+      python -m radio_record
+      --port 9100 --dashboard-port 8080 --dashboard-host 0.0.0.0
+      --output /data/recordings --segment-minutes 15
+    volumes:
+      - /srv/radio:/data/recordings
+    labels:
+      # --- аудио: отдельный TCP-entrypoint, catch-all ---
+      - traefik.enable=true
+      - traefik.tcp.routers.radio-ingest.rule=HostSNI(`*`)
+      - traefik.tcp.routers.radio-ingest.entrypoints=ingest
+      - traefik.tcp.routers.radio-ingest.service=radio-ingest
+      - traefik.tcp.services.radio-ingest.loadbalancer.server.port=9100
+      # --- дашборд: обычный HTTP-роутер ---
+      - traefik.http.routers.radio-ui.rule=Host(`radio.example.com`)
+      - traefik.http.routers.radio-ui.entrypoints=websecure
+      - traefik.http.routers.radio-ui.tls.certresolver=le
+      - traefik.http.routers.radio-ui.service=radio-ui
+      - traefik.http.services.radio-ui.loadbalancer.server.port=8080
+      - traefik.http.services.radio-ui.loadbalancer.healthcheck.path=/healthz
+      # --- аутентификация дашборда (см. ниже) ---
+      - traefik.http.routers.radio-ui.middlewares=radio-ui-auth
+      - traefik.http.middlewares.radio-ui-auth.basicauth.users=admin:$$apr1$$...
+```
+
+ESP32 в этом случае подключается на `radio.example.com:9100`, а дашборд открыт
+на `https://radio.example.com/`.
+
+Почему именно так:
+
+- `HostSNI(\`*\`)` — единственный способ поймать весь non-TLS TCP, поэтому
+  entrypoint `ingest` должен быть выделенным: catch-all перехватит всё на этом
+  порту. TCP-роутеры на общем entrypoint обрабатываются раньше HTTP.
+- SSL для аудио не обязателен: трафик и так не HTTP, а TLS на ESP32 стоит RAM.
+  Если нужен — `traefik.tcp.routers.radio-ingest.tls.certresolver=le` плюс
+  `HostSNI(\`radio.example.com\`)` вместо `*`, и прошивка должна ходить через
+  `WiFiClientSecure` с SNI.
+- SSE через Traefik проходит без настройки: `respondingTimeouts.writeTimeout`
+  по умолчанию `0`, `readTimeout` (60 с) относится к чтению запроса, а
+  `idleTimeout` (180 с) — к простаивающему keep-alive; здесь данные идут каждую
+  секунду. Ответы Traefik не буферизует, заголовок `X-Accel-Buffering` в ответе
+  сервера — страховка для nginx и Traefik не мешает.
+- Префикс пути тоже поддержан: `PathPrefix(\`/radio\`)` + `StripPrefix`, страница
+  использует относительные URL API (`/radio/api/status`). Роутинг по Host всё же
+  предпочтительнее — меньше сюрпризов с абсолютными ссылками.
+- Одна реплика: TCP-сессия закрепляется за репликой, но дашборд показывает только
+  сессии своего процесса. Для нескольких реплик нужен sticky-роутинг по устройству
+  или отдельный агрегатор состояния.
+
+### Что требует изменений, если понадобится
+
+| Задача | Что делать |
+| --- | --- |
+| реальный IP ESP32 в логах и дашборде | опубликовать `9100` напрямую, либо добавить в сервер разбор PROXY protocol v1 и включить `proxyProtocol.trustedIPs` у entrypoint |
+| дашборд в интернете | `basicAuth`/`IPAllowList` в Traefik: своей аутентификации у дашборда нет |
+| несколько реплик | sticky по `device_id` + внешняя агрегация статусов |
+
 ## Протокол
 
 Кадр = заголовок (43 байта, little endian) + PCM. Один кадр — один блок

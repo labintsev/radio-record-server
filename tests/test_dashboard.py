@@ -40,6 +40,10 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("text/html", headers["content-type"])
         self.assertIn(b"<title>radio-record</title>", body)
         self.assertIn("Журнал".encode(), body)
+        # Relative API paths keep the page working behind a reverse proxy that
+        # mounts it under a path prefix.
+        self.assertIn(b'apiUrl("api/events")', body)
+        self.assertNotIn(b'"/api/events"', body)
 
     async def test_healthz(self) -> None:
         status, payload = await http_json(self.port, "/healthz")

@@ -245,6 +245,11 @@ const cards = new Map();
 
 const $ = (id) => document.getElementById(id);
 
+// Relative API paths so the dashboard also works behind a reverse proxy that
+// mounts it under a prefix (Traefik PathPrefix + StripPrefix), not just at "/".
+const basePath = location.pathname.endsWith("/") ? location.pathname : location.pathname + "/";
+const apiUrl = (path) => basePath + path;
+
 function fmtBytes(n) {
   if (n === null || n === undefined) return "—";
   const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
@@ -448,13 +453,13 @@ $("clear").addEventListener("click", () => {
 
 async function bootstrap() {
   try {
-    const res = await fetch("/api/status", { cache: "no-store" });
+    const res = await fetch(apiUrl("api/status"), { cache: "no-store" });
     renderStatus(await res.json());
   } catch (err) {
     setConnection("down", "нет связи");
   }
 
-  const events = new EventSource("/api/events");
+  const events = new EventSource(apiUrl("api/events"));
   events.addEventListener("open", () => setConnection("live", "live"));
   events.addEventListener("status", (e) => {
     setConnection("live", "live");
