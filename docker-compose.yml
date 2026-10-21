@@ -27,9 +27,8 @@ services:
       traefik.http.services.radio-record.loadbalancer.server.port: "8080"
       traefik.http.services.radio-record.loadbalancer.healthcheck.path: /healthz
     volumes:
-      - radio-record-data:/data/recordings
-      # Host directory instead of the named volume (needs chown -R 10001:10001 /srv/radio):
-      # - /srv/radio:/data/recordings
+      # Host directory, visible without Docker (needs: chown 10001:10001 ~/radio-recordings).
+      - ${HOME}/radio-recordings:/data/recordings
     networks:
       - frontend
     healthcheck:
@@ -49,7 +48,3 @@ networks:
   frontend:
     external: true
     name: ${TRAEFIK_NETWORK:-traefik_frontend}
-
-volumes:
-  radio-record-data:
-    name: radio-record-data
