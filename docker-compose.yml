@@ -1,0 +1,46 @@
+services:
+  radio-record:
+    build: .
+    image: radio-record:latest
+    container_name: radio-record
+    restart: unless-stopped
+    command:
+      - --port
+      - "9100"
+      - --dashboard-port
+      - "8080"
+      - --dashboard-host
+      - "0.0.0.0"
+      - --output
+      - /data/recordings
+    # Only audio is published. The dashboard stays inside the shared network,
+    # where Traefik reaches it as http://radio-record:8080.
+    ports:
+      - "9100:9100"
+    volumes:
+      - radio-record-data:/data/recordings
+      # Host directory instead of the named volume (needs chown -R 10001:10001 /srv/radio):
+      # - /srv/radio:/data/recordings
+    networks:
+      - frontend
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=2)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  # Existing Traefik network. Its real name is <compose-project>_frontend, so it
+  # comes from TRAEFIK_NETWORK or the default below.
+  frontend:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik_frontend}
+
+volumes:
+  radio-record-data:
+    name: radio-record-data

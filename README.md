@@ -125,6 +125,41 @@ entryPoints:
 docker build -t radio-record .
 ```
 
+### В общей сети с уже работающим Traefik
+
+Готовый [docker-compose.yml](docker-compose.yml) рассчитан именно на такой сервер:
+контейнер только подключается к существующей сети `frontend` и ничего не меняет у
+соседних проектов. Реальное имя сети — `<compose-проект>_frontend`, поэтому оно
+берётся из `TRAEFIK_NETWORK` (по умолчанию `traefik_frontend`).
+
+- дашборд наружу не публикуется: Traefik ходит в него как `http://radio-record:8080`;
+- на хосте публикуется только аудиопорт `9100`, поэтому статическая конфигурация
+  Traefik не меняется вовсе;
+- архив лежит в именованном томе `radio-record-data` (владелец — UID `10001`),
+  так что bind-mount на каталог хоста потребует `chown -R 10001:10001`.
+
+В `dynamic_conf.yml` остаётся уже существующий сервис, меняется только адрес:
+
+```yaml
+    radio:
+      loadBalancer:
+        servers:
+          - url: "http://radio-record:8080"
+        passHostHeader: true
+```
+
+Лейблы при этом не нужны: второй роутер на тот же `Host` дал бы два роутера с
+одинаковым приоритетом, то есть недетерминированный выбор. ESP32 присылает аудио
+на тот же `radio.example.com:9100` — порт опубликован напрямую.
+
+Если нужно, чтобы аудио тоже шло через Traefik, понадобится отдельный
+TCP-entrypoint (см. выше), а публикацию `9100` из compose придётся убрать.
+
+### Вариант с лейблами
+
+Если у проекта отдельный Traefik или `ingest`-entrypoint уже добавлен, маршруты
+можно описать лейблами:
+
 ```yaml
 services:
   radio-record:
@@ -154,8 +189,8 @@ services:
       - traefik.http.middlewares.radio-ui-auth.basicauth.users=admin:$$apr1$$...
 ```
 
-ESP32 в этом случае подключается на `radio.example.com:9100`, а дашборд открыт
-на `https://radio.example.com/`.
+В варианте с лейблами ESP32 подключается на `radio.example.com:9100`, а дашборд
+открыт на `https://radio.example.com/`.
 
 Почему именно так:
 
