@@ -3,66 +3,10 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
-from typing import Callable, Iterable
 
 from radio_record.config import Settings
-from radio_record.protocol import CODEC_PCM_S16LE, FrameHeader
 from radio_record.receiver import RadioServer
-
-RATE = 16000
-FRAME_MS = 20
-
-
-async def push_frames(
-    port: int,
-    device: str,
-    pieces: Iterable[tuple[int, int]],
-    host: str = "127.0.0.1",
-    sample_rate: int = RATE,
-    channels: int = 1,
-) -> None:
-    """Send ``(first_sample, sample_count)`` pieces over one connection."""
-    _, writer = await asyncio.open_connection(host, port)
-    seq = 0
-    try:
-        for first_sample, samples in pieces:
-            position, remaining = first_sample, samples
-            while remaining > 0:
-                count = min(sample_rate * FRAME_MS // 1000, remaining)
-                payload = bytes(count * 2 * channels)
-                header = FrameHeader(
-                    codec=CODEC_PCM_S16LE,
-                    device_id=device,
-                    seq=seq,
-                    first_sample=position,
-                    payload_len=len(payload),
-                    sample_rate=sample_rate,
-                    channels=channels,
-                )
-                writer.write(header.pack() + payload)
-                seq += 1
-                position += count
-                remaining -= count
-        await writer.drain()
-    finally:
-        writer.close()
-        await writer.wait_closed()
-
-
-async def wait_for(predicate: Callable[[], object], timeout: float = 10.0):
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-    while loop.time() < deadline:
-        result = predicate()
-        if result:
-            return result
-        await asyncio.sleep(0.02)
-    raise AssertionError("timed out waiting for condition")
-
-
-def at_least(directory: Path, pattern: str, count: int) -> list[Path] | None:
-    found = sorted(directory.glob(pattern))
-    return found if len(found) >= count else None
+from .helpers import RATE, at_least, push_frames, wait_for
 
 
 class IngestTests(unittest.IsolatedAsyncioTestCase):

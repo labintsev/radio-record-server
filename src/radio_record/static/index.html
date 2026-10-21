@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>radio-record</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1419;
+    --panel: #171d24;
+    --panel-2: #1e262f;
+    --line: #2a3540;
+    --fg: #d8e0e8;
+    --dim: #8b9aa8;
+    --ok: #45c98a;
+    --warn: #e0a33a;
+    --err: #e35f5f;
+    --accent: #4a9eff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  header h1 { font-size: 15px; margin: 0; letter-spacing: .3px; font-weight: 600; }
+  header h1 span { color: var(--accent); }
+  .meta { color: var(--dim); font-size: 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .meta b { color: var(--fg); font-weight: 500; }
+  .pill {
+    margin-left: auto;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+  }
+  .pill.live { color: var(--ok); border-color: #2c6b4f; }
+  .pill.down { color: var(--err); border-color: #6b2c2c; }
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+  }
+  section { padding: 12px 18px; border-bottom: 1px solid var(--line); min-height: 0; }
+  section h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    color: var(--dim);
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; }
+  .empty { color: var(--dim); font-size: 13px; margin: 0; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ok);
+    border-radius: 8px;
+    padding: 12px 14px;
+    min-width: 340px;
+    flex: 1 1 340px;
+    max-width: 520px;
+  }
+  .card.stalled { border-left-color: var(--warn); }
+  .card-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  .card-top strong { font-size: 15px; }
+  .card-top .peer { color: var(--dim); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+  .state {
+    margin-left: auto;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--ok);
+  }
+  .stalled .state { color: var(--warn); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px 12px;
+    margin-bottom: 10px;
+  }
+  .grid label { display: block; font-size: 11px; color: var(--dim); }
+  .grid span { font-variant-numeric: tabular-nums; font-size: 13px; }
+  .seg { font-size: 12px; color: var(--dim); }
+  .seg .name {
+    font-family: ui-monospace, Consolas, monospace;
+    color: var(--fg);
+    word-break: break-all;
+  }
+  .bar { height: 4px; background: var(--panel-2); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .bar.queue { margin-top: 4px; }
+  .bar.queue i { background: var(--warn); }
+  .bar-cap { display: flex; justify-content: space-between; font-size: 11px; margin-top: 8px; color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; }
+  td { font-variant-numeric: tabular-nums; }
+  #recent .empty { margin-top: 2px; }
+  .logs { display: flex; flex-direction: column; min-height: 0; padding-bottom: 8px; }
+  .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .toolbar .spacer { flex: 1; }
+  button {
+    background: var(--panel-2);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { border-color: var(--accent); }
+  button[data-level].active { border-color: var(--accent); color: var(--accent); }
+  .count { color: var(--dim); font-size: 12px; }
+  #logbox {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background: #0b1015;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .logline { display: flex; gap: 10px; white-space: pre-wrap; word-break: break-word; }
+  .logline .ts { color: #5d6b78; flex: none; }
+  .logline .lvl { flex: none; width: 52px; font-weight: 600; }
+  .logline .src { color: #6f7f8d; flex: none; }
+  .logline .msg { flex: 1; }
+  .lvl-INFO, .lvl-DEBUG { color: #7f8f9d; }
+  .lvl-WARNING { color: var(--warn); }
+  .lvl-ERROR, .lvl-CRITICAL { color: var(--err); }
+  .logline.hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>radio<span>·</span>record</h1>
+  <div class="meta">
+    <span>приём: <b id="m-listen">—</b></span>
+    <span>uptime: <b id="m-uptime">—</b></span>
+    <span>формат: <b id="m-format">—</b></span>
+    <span>архив: <b id="m-output">—</b></span>
+  </div>
+  <div class="pill" id="conn">подключение…</div>
+</header>
+
+<main>
+  <section id="devices">
+    <h2>Активные подключения <span class="count" id="devcount"></span></h2>
+    <div class="cards" id="cards"></div>
+    <p class="empty" id="devempty">Нет подключённых устройств</p>
+  </section>
+
+  <section id="recent">
+    <h2>Последние сессии</h2>
+    <table id="recent-table">
+      <thead>
+        <tr><th>Устройство</th><th>Адрес</th><th>Длительность</th><th>Кадров</th><th>Сегментов</th><th>Завершение</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="empty" id="recentempty">Пока пусто</p>
+  </section>
+
+  <section class="logs">
+    <h2>Журнал</h2>
+    <div class="toolbar">
+      <button data-level="ALL" class="active">Все</button>
+      <button data-level="INFO">Info</button>
+      <button data-level="WARNING">Warning</button>
+      <button data-level="ERROR">Errors</button>
+      <span class="spacer"></span>
+      <label class="count"><input type="checkbox" id="autoscroll" checked> автоскролл</label>
+      <label class="count"><input type="checkbox" id="pause"> пауза</label>
+      <button id="clear">Очистить</button>
+      <span class="count" id="logcount"></span>
+    </div>
+    <div id="logbox"></div>
+  </section>
+</main>
+
+<template id="card-t">
+  <article class="card">
+    <div class="card-top">
+      <strong data-f="device_id"></strong>
+      <span class="peer" data-f="peer"></span>
+      <span class="state" data-f="state"></span>
+    </div>
+    <div class="grid">
+      <div><label>Скорость</label><span data-f="rate"></span></div>
+      <div><label>Кадров</label><span data-f="frames"></span></div>
+      <div><label>Получено</label><span data-f="total_bytes"></span></div>
+      <div><label>Аудио</label><span data-f="audio"></span></div>
+      <div><label>Пропуски</label><span data-f="gaps"></span></div>
+      <div><label>Простой</label><span data-f="idle"></span></div>
+    </div>
+    <div class="seg">
+      <div class="name" data-f="segment_name"></div>
+      <div class="bar"><i data-f="segment_bar"></i></div>
+      <div class="bar-cap">
+        <span data-f="segment_meta"></span>
+        <span data-f="segments_written"></span>
+      </div>
+      <div class="bar queue"><i data-f="queue_bar"></i></div>
+      <div class="bar-cap">
+        <span data-f="queue_text"></span>
+        <span data-f="post_processing"></span>
+      </div>
+    </div>
+  </article>
+</template>
+
+<script>
+"use strict";
+
+const MAX_LINES = 1500;
+const rows = [];
+let level = "ALL";
+let paused = false;
+let pausedBuffer = [];
+const cards = new Map();
+
+const $ = (id) => document.getElementById(id);
+
+function fmtBytes(n) {
+  if (n === null || n === undefined) return "—";
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+  let v = Number(n), i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return (i === 0 ? v : v.toFixed(v < 10 ? 2 : 1)) + " " + units[i];
+}
+function fmtRate(bps) {
+  if (!bps) return "0 кбит/с";
+  return (bps * 8 / 1000).toFixed(0) + " кбит/с";
+}
+function fmtDuration(sec) {
+  if (sec === null || sec === undefined) return "—";
+  sec = Math.floor(sec);
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (h) return `${h}ч ${m}м`;
+  if (m) return `${m}м ${s}с`;
+  return `${s}с`;
+}
+function fmtClock(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleTimeString("ru-RU", { hour12: false });
+}
+function setText(el, value) {
+  const text = value === null || value === undefined ? "—" : String(value);
+  if (el.textContent !== text) el.textContent = text;
+}
+function setWidth(el, ratio) {
+  el.style.width = Math.max(0, Math.min(1, ratio || 0)) * 100 + "%";
+}
+
+function renderStatus(s) {
+  setText($("m-listen"), s.listen || "—");
+  setText($("m-output"), s.output_dir);
+  setText($("m-format"), `${(s.sample_rate / 1000).toFixed(1)} кГц · ${s.channels === 2 ? "стерео" : "моно"} · ${fmtDuration(s.segment_seconds)}/сегмент`);
+  if (s.started_at) {
+    setText($("m-uptime"), fmtDuration((Date.now() - new Date(s.started_at).getTime()) / 1000));
+  }
+
+  const devices = s.devices || [];
+  setText($("devcount"), devices.length ? `(${devices.length})` : "");
+  $("devempty").style.display = devices.length ? "none" : "";
+
+  const seen = new Set();
+  for (const d of devices) {
+    seen.add(d.device_id);
+    let el = cards.get(d.device_id);
+    if (!el) {
+      el = $("card-t").content.firstElementChild.cloneNode(true);
+      cards.set(d.device_id, el);
+      $("cards").appendChild(el);
+    }
+    fillCard(el, d, s);
+  }
+  for (const [id, el] of cards) {
+    if (!seen.has(id)) { el.remove(); cards.delete(id); }
+  }
+
+  renderRecent(s.recent || []);
+}
+
+function fillCard(el, d, s) {
+  const q = (f) => el.querySelector(`[data-f="${f}"]`);
+  el.className = "card " + (d.state === "stalled" ? "stalled" : "live");
+  setText(q("device_id"), d.device_id);
+  setText(q("peer"), d.peer);
+  setText(q("state"), d.state === "stalled" ? "нет данных" : "поток идёт");
+  setText(q("rate"), fmtRate(d.rate_bps));
+  setText(q("frames"), d.frames);
+  setText(q("total_bytes"), fmtBytes(d.total_bytes));
+  setText(q("audio"), fmtDuration(d.samples / s.sample_rate));
+  setText(q("gaps"), (d.gap_samples || 0) + " сэмп.");
+  setText(q("idle"), d.idle_seconds === null ? "—" : d.idle_seconds.toFixed(1) + " с");
+  setText(q("segment_name"), d.segment_name || "сегмент не открыт");
+
+  setWidth(q("segment_bar"), s.segment_seconds ? d.segment_seconds / s.segment_seconds : 0);
+  setText(q("segment_meta"), `${fmtDuration(d.segment_seconds)} из ${fmtDuration(s.segment_seconds)} · ${fmtBytes(d.segment_bytes)}`);
+  setText(q("segments_written"), `сегментов: ${d.segments_written}`);
+
+  const cap = d.queue_capacity || 1;
+  setWidth(q("queue_bar"), d.queue_depth / cap);
+  setText(q("queue_text"), `очередь ${d.queue_depth} / ${cap}`);
+  setText(q("post_processing"), d.post_processing ? `пост-обработка: ${d.post_processing}` : "");
+}
+
+function fmtReason(reason) {
+  if (!reason) return "—";
+  const known = {
+    "stream ended": "поток завершён",
+    "connection lost": "связь потеряна",
+    "idle timeout": "нет данных",
+    "closed": "закрыто",
+  };
+  if (known[reason]) return known[reason];
+  if (reason.startsWith("protocol error:")) return "ошибка протокола:" + reason.slice("protocol error:".length);
+  return reason;
+}
+
+function renderRecent(recent) {
+  const body = $("recent-table").querySelector("tbody");
+  body.replaceChildren();
+  $("recentempty").style.display = recent.length ? "none" : "";
+  $("recent-table").style.display = recent.length ? "" : "none";
+
+  for (const r of recent.slice().reverse()) {
+    const tr = document.createElement("tr");
+    const cells = [
+      r.device_id,
+      r.peer,
+      fmtDuration(r.uptime_seconds),
+      r.frames,
+      r.segments_written,
+      `${fmtReason(r.reason)} · ${fmtClock(r.closed_at)}`,
+    ];
+    for (const value of cells) {
+      const td = document.createElement("td");
+      td.textContent = value === null || value === undefined ? "—" : String(value);
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+}
+
+function levelMatches(entry) {
+  if (level === "ALL") return true;
+  if (level === "ERROR") return entry.level === "ERROR" || entry.level === "CRITICAL";
+  return entry.level === level;
+}
+
+function makeLine(entry) {
+  const line = document.createElement("div");
+  line.className = "logline";
+  const ts = document.createElement("span");
+  ts.className = "ts";
+  ts.textContent = fmtClock(new Date(entry.time * 1000).toISOString());
+  const lvl = document.createElement("span");
+  lvl.className = "lvl lvl-" + entry.level;
+  lvl.textContent = entry.level;
+  const src = document.createElement("span");
+  src.className = "src";
+  src.textContent = entry.logger;
+  const msg = document.createElement("span");
+  msg.className = "msg";
+  msg.textContent = entry.message;
+  line.append(ts, lvl, src, msg);
+  if (!levelMatches(entry)) line.classList.add("hidden");
+  return line;
+}
+
+function appendLog(entry) {
+  if (paused) { pausedBuffer.push(entry); return; }
+  const box = $("logbox");
+  const line = makeLine(entry);
+  rows.push({ entry, line });
+  box.appendChild(line);
+  while (rows.length > MAX_LINES) rows.shift().line.remove();
+  if ($("autoscroll").checked) box.scrollTop = box.scrollHeight;
+  setText($("logcount"), `${rows.length} строк`);
+}
+
+function rerender() {
+  const box = $("logbox");
+  box.replaceChildren();
+  for (const { entry, line } of rows) {
+    line.classList.toggle("hidden", !levelMatches(entry));
+    box.appendChild(line);
+  }
+  setText($("logcount"), `${rows.length} строк`);
+}
+
+function setConnection(state, text) {
+  const el = $("conn");
+  el.className = "pill " + state;
+  el.textContent = text;
+}
+
+document.querySelectorAll("button[data-level]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    level = btn.dataset.level;
+    document.querySelectorAll("button[data-level]").forEach((b) => b.classList.toggle("active", b === btn));
+    rerender();
+  });
+});
+
+$("pause").addEventListener("change", (e) => {
+  paused = e.target.checked;
+  if (!paused) {
+    const buffered = pausedBuffer;
+    pausedBuffer = [];
+    for (const entry of buffered) appendLog(entry);
+  }
+});
+
+$("clear").addEventListener("click", () => {
+  rows.length = 0;
+  pausedBuffer = [];
+  $("logbox").replaceChildren();
+  setText($("logcount"), "0 строк");
+});
+
+async function bootstrap() {
+  try {
+    const res = await fetch("/api/status", { cache: "no-store" });
+    renderStatus(await res.json());
+  } catch (err) {
+    setConnection("down", "нет связи");
+  }
+
+  const events = new EventSource("/api/events");
+  events.addEventListener("open", () => setConnection("live", "live"));
+  events.addEventListener("status", (e) => {
+    setConnection("live", "live");
+    renderStatus(JSON.parse(e.data));
+  });
+  events.addEventListener("log", (e) => appendLog(JSON.parse(e.data)));
+  events.addEventListener("error", () => setConnection("down", "переподключение…"));
+}
+
+bootstrap();
+</script>
+</body>
+</html>

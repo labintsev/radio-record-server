@@ -31,3 +31,11 @@ class Settings:
     keep_wav: bool = False
 
     idle_timeout: float = 30.0
+
+    # Web dashboard. Bound to loopback by default: it exposes logs and device
+    # ids, so opening it to the network is an explicit decision.
+    dashboard: bool = True
+    dashboard_host: str = "127.0.0.1"
+    dashboard_port: int = 8080
+    dashboard_open: bool = False
+    log_buffer: int = 2000

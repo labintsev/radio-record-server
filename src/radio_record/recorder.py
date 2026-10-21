@@ -98,6 +98,24 @@ class DeviceRecorder:
         self._stats = SegmentStats()
         self._finalized: list[Path] = []
         self._background: set[asyncio.Task[None]] = set()
+        self.segments_written = 0
+        self.bytes_written = 0
+        self.total_gap_samples = 0
+
+    def live_state(self) -> dict[str, object]:
+        """Snapshot for the dashboard; safe to call from the event loop."""
+        writer = self._writer
+        return {
+            "segment_name": writer.path.name if writer else None,
+            "segment_seconds": round(writer.duration, 2) if writer else 0.0,
+            "segment_bytes": writer.data_bytes if writer else 0,
+            "segment_frames": self._stats.frames,
+            "segment_gap_samples": self._stats.gap_samples,
+            "gap_samples": self.total_gap_samples,
+            "segments_written": self.segments_written,
+            "bytes_written": self.bytes_written,
+            "post_processing": len(self._background),
+        }
 
     async def run(self, queue: "asyncio.Queue[tuple[FrameHeader, bytes] | None]") -> None:
         try:
@@ -142,6 +160,7 @@ class DeviceRecorder:
         self._expected_sample = header.first_sample + usable // block
 
     def _pad(self, gap_samples: int) -> None:
+        self.total_gap_samples += gap_samples
         if not self.settings.pad_gaps:
             self._expected_sample = (self._expected_sample or 0) + gap_samples
             self._stats.gap_samples += gap_samples
@@ -197,6 +216,8 @@ class DeviceRecorder:
         target = writer.path.with_suffix(".wav")
         writer.path.replace(target)
         self._finalized.append(target)
+        self.segments_written += 1
+        self.bytes_written += writer.data_bytes
         log.info(
             "%s: stored %s (%.2fs, %d frames, %d gap samples)",
             self.device_id,

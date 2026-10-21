@@ -7,7 +7,7 @@ name = "radio-record-server"
 version = "0.1.0"
 description = "TCP ingest and on-disk segmentation for ESP32 radio streams"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["fastapi>=0.115", "uvicorn>=0.30"]
 
 [project.optional-dependencies]
 transcode = ["av>=14"]
@@ -17,3 +17,6 @@ radio-record = "radio_record.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+radio_record = ["static/*.html"]
