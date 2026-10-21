@@ -13,10 +13,19 @@ services:
       - "0.0.0.0"
       - --output
       - /data/recordings
-    # Only audio is published. The dashboard stays inside the shared network,
-    # where Traefik reaches it as http://radio-record:8080.
+    # Only audio is published. The dashboard stays inside the shared network.
     ports:
       - "9100:9100"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik_frontend}
+      # Change the host to the name you actually create a DNS record for.
+      traefik.http.routers.radio-record.rule: "Host(`radio-record.mldl.ru`)"
+      traefik.http.routers.radio-record.entrypoints: websecure
+      traefik.http.routers.radio-record.tls.certresolver: letsencrypt
+      traefik.http.routers.radio-record.service: radio-record
+      traefik.http.services.radio-record.loadbalancer.server.port: "8080"
+      traefik.http.services.radio-record.loadbalancer.healthcheck.path: /healthz
     volumes:
       - radio-record-data:/data/recordings
       # Host directory instead of the named volume (needs chown -R 10001:10001 /srv/radio):
